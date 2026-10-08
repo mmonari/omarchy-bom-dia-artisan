@@ -1,3 +1,7 @@
+// checkDue's cases are written in local time, and editions are dated in São
+// Paulo, so pin the zone: the suite must pass on a machine anywhere.
+process.env.TZ = "America/Sao_Paulo";
+
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -13,7 +17,8 @@ test("request is a fixed argv against the JSON API, with its own timeout", () =>
   const argv = S.request();
   assert.equal(argv[0], "curl");
   assert.equal(argv[argv.length - 1], "https://bom-dia-artisan.dev/api/reports");
-  assert.ok(argv.includes("--fail"));
+  assert.ok(!argv.includes("--fail"), "--fail would hide the HTTP status");
+  assert.match(argv[argv.indexOf("--write-out") + 1], /%\{http_code\} %header\{retry-after\}$/);
   const max = Number(argv[argv.indexOf("--max-time") + 1]);
   assert.ok(S.timeoutMs() > max * 1000, "the guard outlives curl's own timeout");
 });
@@ -28,16 +33,38 @@ test("parse turns curl outcomes into words, never throws", () => {
   assert.equal(S.parse(undefined, 0).ok, false);
 });
 
+const reply = (body, code, retry = "") => body + S.TRAILER + code + " " + retry;
+
+test("parse reads the HTTP status from curl's trailer", () => {
+  assert.deepEqual(S.parse(reply('[{"date":"2026-10-08"}]', 200), 0).doc, [{ date: "2026-10-08" }]);
+  const e404 = S.parse(reply('{"statusCode":404,"statusMessage":"Relatório não encontrado"}', 404), 0);
+  assert.equal(e404.ok, false);
+  assert.equal(e404.error, "O site respondeu com erro (HTTP 404)");
+  assert.equal(e404.retryAfterMs, undefined);
+  assert.equal(S.parse(reply("", 0), 0).ok, false, "no status at all");
+});
+
+test("a 429 honours Retry-After, in seconds or as a date", () => {
+  const now = Date.UTC(2026, 9, 8, 12, 0, 0);
+  const secs = S.parse(reply('{"statusCode":429}', 429, "42"), 0, now);
+  assert.equal(secs.ok, false);
+  assert.match(secs.error, /pausa/);
+  assert.equal(secs.retryAfterMs, 42000);
+  const date = S.parse(reply("", 429, "Thu, 08 Oct 2026 12:02:00 GMT"), 0, now);
+  assert.equal(date.retryAfterMs, 120000);
+  assert.equal(S.parse(reply("", 429), 0, now).retryAfterMs, 60000, "no header: one API window");
+});
+
 // 2026-10-08, local time.
 const at = (h, m = 0) => new Date(2026, 9, 8, h, m).getTime();
-const due = (o) => S.checkDue(Object.assign({ checkAt: "09:30", hasToday: false, lastAttemptMs: 0, failures: 0 }, o));
+const due = (o) => S.checkDue(Object.assign({ checkAt: "09:30", newestDate: "2026-10-07", lastAttemptMs: 0, failures: 0 }, o));
 
 test("checks once a day, at checkAt, and not before", () => {
   assert.equal(due({ nowMs: at(8, 0) }), false, "too early");
   assert.equal(due({ nowMs: at(9, 30) }), true, "the morning check");
   assert.equal(due({ nowMs: at(15, 0) }), true, "machine was off at 09:30: check on wake");
-  assert.equal(due({ nowMs: at(15, 0), hasToday: true }), false, "today's edition already cached");
-  assert.equal(due({ nowMs: at(9, 31), lastAttemptMs: at(9, 30), hasToday: true }), false, "done for the day");
+  assert.equal(due({ nowMs: at(15, 0), newestDate: "2026-10-08" }), false, "today's edition already cached");
+  assert.equal(due({ nowMs: at(9, 31), lastAttemptMs: at(9, 30), newestDate: "2026-10-08" }), false, "done for the day");
 });
 
 test("yesterday's check does not count for today", () => {
@@ -51,6 +78,24 @@ test("a late edition is retried hourly, a failure with backoff", () => {
   assert.equal(due({ nowMs: at(9, 31), lastAttemptMs: at(9, 30), failures: 1 }), true, "offline: 1 min");
   assert.equal(due({ nowMs: at(9, 31), lastAttemptMs: at(9, 30), failures: 3 }), false, "offline: 4 min");
   assert.equal(S.failRetryMs(30), 30 * 60000, "capped at 30 min");
+});
+
+test("a 429 holds every check until the site's Retry-After", () => {
+  assert.equal(due({ nowMs: at(9, 30), notBeforeMs: at(9, 31) }), false);
+  assert.equal(due({ nowMs: at(9, 31), notBeforeMs: at(9, 31) }), true);
+});
+
+test("editions are dated in São Paulo, wherever the reader is", () => {
+  // 09:30 in Tokyo is 21:30 the evening before in São Paulo.
+  assert.equal(S.editionDate(Date.UTC(2026, 9, 8, 0, 30)), "2026-10-07");
+  // 09:30 in Lisbon (UTC+1) is 05:30 in São Paulo, same day.
+  assert.equal(S.editionDate(Date.UTC(2026, 9, 8, 8, 30)), "2026-10-08");
+  // Midnight in São Paulo is 03:00 UTC.
+  assert.equal(S.editionDate(Date.UTC(2026, 9, 8, 2, 59)), "2026-10-07");
+  assert.equal(S.editionDate(Date.UTC(2026, 9, 8, 3, 0)), "2026-10-08");
+  // A Tokyo morning with São Paulo's latest edition already cached: nothing to do.
+  const tokyoMorning = Date.UTC(2026, 9, 8, 0, 30);
+  assert.equal(S.checkDue({ nowMs: tokyoMorning, checkAt: "00:00", newestDate: "2026-10-07", lastAttemptMs: 0, failures: 0 }), false);
 });
 
 test("checkAt is parsed leniently and falls back to 09:30", () => {

@@ -16,12 +16,17 @@ readable from the Omarchy bar.
 - **The whole edition in the panel.** It shows the editors' summary, the "what is actually
   released vs only merged" note, and every item grouped by package. Each item has a status chip
   (Release, Merged, Dica), its repository, a one-line "why it matters", and the editors' full
-  note on demand.
+  note on demand. Notes keep their Markdown: paragraphs, headings, lists, code blocks and
+  links you can click.
 - **The last 16 days** are one arrow key away. An edition counts as read once it has been on
   screen for a moment, not as you arrow past it.
 - **A toast for each new edition**, sent once. Clicking it opens the panel. It respects Do Not
   Disturb.
-- **Checks once a day**, at 09:30 by default. It's a morning brief, not a ticker.
+- **Checks once a day**, at 09:30 by default. It's a morning brief, not a ticker. Editions are
+  dated in São Paulo time, so outside Brazil "today's edition" means São Paulo's today, and the
+  plugin does not retry all day for one that isn't due yet.
+- **Polite to the API.** It stays far under the 10 requests per minute limit, and if the site
+  ever answers `429` it waits for the `Retry-After` it was given, clicks included.
 - **Offline-friendly.** The last answer is cached, so the panel opens instantly and still works
   without a network. The footer says when what you see is the saved copy.
 
@@ -66,7 +71,7 @@ Set these on the widget's entry in `~/.config/omarchy/shell.json`, or with
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `checkAt` | `"09:30"` | Local time of the one daily check. The edition is usually out by then. If it isn't, the plugin checks again hourly until it is, then stays quiet until the next morning. If the machine was off or asleep at that time, the check runs as soon as it's back. Opening the panel never fetches; the ↻ button does. |
+| `checkAt` | `"09:30"` | Local time of the one daily check (your clock; the *edition* date follows São Paulo). The edition is usually out by then. If it isn't, the plugin checks again hourly until it is, then stays quiet until the next morning. If the machine was off or asleep at that time, the check runs as soon as it's back. Opening the panel never fetches; the ↻ button does. |
 | `notify` | `"on"` | `"off"` disables the toast. The bar dot still shows unread editions. |
 
 ## IPC
@@ -134,7 +139,8 @@ One fetch, start to finish:
 1. A 60-second timer in `BarWidget.qml` asks `Source.checkDue()` whether the day's check is
    due. A wall-clock check survives suspend, unlike a long QML `Timer`.
 2. If it is due, `BarWidget.qml` runs the argv from `Source.request()` (a `curl` command) and
-   hands the output to `Source.parse()`.
+   hands the output to `Source.parse()`. curl runs without `--fail` and appends the HTTP status
+   and `Retry-After` as a trailer line, so a `429` can be told apart from other errors.
 3. `Model.normalize()` turns the API response into editions. The widget writes the raw response
    to `reports.json`.
 4. `Model.notifyCandidate()` decides whether to toast. If yes, the widget saves `state.json`
@@ -168,8 +174,10 @@ ItemRow.qml            One news item: chip, repo, headline, expandable note
 StatusChip.qml         The Release / Merged / Dica chip
 Mark.qml               The mug in the bar: steam + dot when unread
 
-Model.js               Every rule: normalizing, filters, cursor moves, read marks, notify, wording
-Source.js              Transport: the curl argv, response parsing, curl error messages, checkDue
+Model.js               Every rule: normalizing, filters, cursor moves, read marks, notify, wording,
+                       and the Markdown-to-StyledText converter for the editors' notes
+Source.js              Transport: the curl argv, response parsing (HTTP status, 429), checkDue,
+                       and the São Paulo edition date
 Actions.js             Fixed argv for xdg-open and the toast. Feed text never reaches a shell
 Theme.js               Status colours, glyphs and labels, written as \u escapes
 

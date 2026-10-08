@@ -60,6 +60,8 @@ BarWidget {
     property bool dirsReady: false
     property bool cacheKnown: false    // the cache file has been tried
     property double lastAttemptMs: 0
+    // Set by a 429: no request, scheduled or clicked, before this time.
+    property double notBeforeMs: 0
     property double lastOkMs: 0
     property string error: ""
     property int failures: 0
@@ -223,6 +225,8 @@ BarWidget {
       return;
     }
     if (internal.inFlight || !internal.dirsReady) return;
+    // Rate limited: a click would only earn another 429.
+    if (Date.now() < internal.notBeforeMs) return;
     internal.inFlight = true;
     internal.lastAttemptMs = Date.now();
     fetchProc.command = Source.request();
@@ -242,9 +246,10 @@ BarWidget {
     root.afterData();
   }
 
-  function fail(reason) {
+  function fail(reason, retryAfterMs) {
     internal.failures += 1;
     internal.error = reason;
+    if (retryAfterMs > 0) internal.notBeforeMs = Date.now() + retryAfterMs;
   }
 
   // Asked once a minute (and at startup): is the day's check due? Leader only,
@@ -256,9 +261,10 @@ BarWidget {
     if (Source.checkDue({
       nowMs: now,
       checkAt: root.checkAt,
-      hasToday: internal.editions.length > 0 && internal.editions[0].date === Model.todayIso(now),
+      newestDate: internal.editions.length > 0 ? internal.editions[0].date : "",
       lastAttemptMs: internal.lastAttemptMs,
-      failures: internal.failures
+      failures: internal.failures,
+      notBeforeMs: internal.notBeforeMs
     }))
       root.refresh(false);
   }
@@ -280,8 +286,8 @@ BarWidget {
     onExited: function (exitCode) {
       guard.stop();
       internal.inFlight = false;
-      var res = Source.parse(stdout.text, exitCode);
-      if (res.ok) root.succeed(res); else root.fail(res.error);
+      var res = Source.parse(stdout.text, exitCode, Date.now());
+      if (res.ok) root.succeed(res); else root.fail(res.error, res.retryAfterMs || 0);
     }
   }
 

@@ -13,11 +13,17 @@
 var ENDPOINT = "https://bom-dia-artisan.dev/api/reports";
 var USER_AGENT = "omarchy-bom-dia-artisan/0.1 (+https://github.com/mmonari/omarchy-bom-dia-artisan)";
 
+// No --fail: it would hide the HTTP status, and a 429 has to be told apart
+// from any other error so its Retry-After can be honoured. Instead curl
+// appends a trailer line with the status and that header.
+var TRAILER = "\n@@bom-dia-artisan ";
+
 function request() {
   return [
-    "curl", "--fail", "--silent", "--show-error", "--location", "--compressed",
+    "curl", "--silent", "--show-error", "--location", "--compressed",
     "--max-time", "20", "--connect-timeout", "8",
     "--user-agent", USER_AGENT,
+    "--write-out", TRAILER + "%{http_code} %header{retry-after}",
     ENDPOINT
   ];
 }
@@ -37,14 +43,42 @@ var CURL_ERRORS = {
   127: "curl não está instalado"
 };
 
+// The API allows 10 requests per minute per IP and answers 429 with
+// Retry-After (seconds, or an HTTP date). Without a usable value, wait a
+// minute: the length of the API's window.
+var RATE_LIMIT_FALLBACK_MS = 60000;
+
+function retryAfterMs(value, nowMs) {
+  var v = String(value || "").trim();
+  if (/^\d+$/.test(v))
+    return Math.max(1000, Number(v) * 1000);
+  var at = Date.parse(v);
+  if (isFinite(at))
+    return Math.max(1000, at - (nowMs || Date.now()));
+  return RATE_LIMIT_FALLBACK_MS;
+}
+
 // Never throws: a widget that throws inside the shell process takes the bar
 // with it.
-function parse(stdout, exitCode) {
+function parse(stdout, exitCode, nowMs) {
   if (exitCode !== 0) {
     var msg = CURL_ERRORS[exitCode] || ("Falha ao buscar as edições (curl " + exitCode + ")");
     return { ok: false, error: msg, offline: exitCode === 6 || exitCode === 7 || exitCode === 28 };
   }
-  var text = typeof stdout === "string" ? stdout.trim() : "";
+  var out = typeof stdout === "string" ? stdout : "";
+  var cut = out.lastIndexOf(TRAILER);
+  var status = 200;
+  if (cut >= 0) {
+    // "<status> <retry-after>", where Retry-After may be an HTTP date with spaces.
+    var meta = /^\s*(\d*)\s*(.*)$/.exec(out.slice(cut + TRAILER.length));
+    status = Number(meta[1]) || 0;
+    out = out.slice(0, cut);
+    if (status === 429)
+      return { ok: false, error: "O site pediu uma pausa (limite de requisições)", retryAfterMs: retryAfterMs(meta[2], nowMs) };
+    if (status < 200 || status >= 300)
+      return { ok: false, error: "O site respondeu com erro (HTTP " + (status || "?") + ")" };
+  }
+  var text = out.trim();
   if (!text)
     return { ok: false, error: "O site respondeu vazio" };
   try {
@@ -91,10 +125,26 @@ function failRetryMs(failures) {
   return Math.min(FAIL_RETRY_CAP_MS, 60000 * Math.pow(2, Math.max(0, failures - 1)));
 }
 
-// state: { nowMs, checkAt, hasToday, lastAttemptMs, failures }
+// Editions are dated in São Paulo time (metadata.timezone is
+// America/Sao_Paulo), so "today's edition" means today *there*, not here. A
+// reader in Tokyo whose morning is São Paulo's evening already has that day's
+// edition, and must not retry hourly for one that is not due until tomorrow.
+// A fixed offset is enough: Brazil has had no daylight saving since 2019, and
+// QML's JS has no time zone database to ask.
+var EDITION_UTC_OFFSET_MIN = -180;
+
+function editionDate(nowMs) {
+  var d = new Date(nowMs + EDITION_UTC_OFFSET_MIN * 60000);
+  function two(n) { return n < 10 ? "0" + n : String(n); }
+  return d.getUTCFullYear() + "-" + two(d.getUTCMonth() + 1) + "-" + two(d.getUTCDate());
+}
+
+// state: { nowMs, checkAt, newestDate, lastAttemptMs, failures, notBeforeMs }
 function checkDue(state) {
-  if (state.hasToday)
+  if (state.newestDate && state.newestDate >= editionDate(state.nowMs))
     return false;                       // today's edition is in: done for the day
+  if (state.nowMs < (Number(state.notBeforeMs) || 0))
+    return false;                       // the site asked us to wait (429)
   var due = checkTimeMs(state.nowMs, state.checkAt);
   if (state.nowMs < due)
     return false;                       // too early: wait for the morning check
