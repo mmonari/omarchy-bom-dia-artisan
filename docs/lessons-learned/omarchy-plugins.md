@@ -27,7 +27,8 @@
 - **Why it matters:** Literal PUA characters are invisible in diffs and terminals. A regex that
   silently changes meaning would pass review.
 - **How to apply:** Run `tools/escape-glyphs.py` on every file a session writes, not only the
-  top-level ones. Widening `--check` to recurse is an open improvement.
+  top-level ones. Both guards now recurse over `.js`/`.mjs`/`.qml` with a shared scope
+  (BL-001, done 2026-10-08).
 - **Refs:** `tools/escape-glyphs.py`, `test/source.test.mjs`
 - **Scope:** generic
 - **Versions:** none
