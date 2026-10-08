@@ -11,7 +11,7 @@
       "id": "site",
       "type": "external",
       "label": "bom-dia-artisan.dev",
-      "sublabel": "GET /api/reports",
+      "sublabel": "/api/reports · /{date}",
       "pos": [
         30,
         390
@@ -20,7 +20,7 @@
         150,
         64
       ],
-      "tag": "16 editions, JSON"
+      "tag": "list daily, probe if late"
     },
     {
       "id": "tests",
@@ -41,7 +41,7 @@
       "id": "actions",
       "type": "security",
       "label": "Actions.js",
-      "sublabel": "argv for xdg-open / toast",
+      "sublabel": "argv: xdg-open, toast",
       "pos": [
         290,
         190
@@ -55,7 +55,7 @@
       "id": "source",
       "type": "backend",
       "label": "Source.js",
-      "sublabel": "curl argv, parse, checkDue",
+      "sublabel": "argv, parse, planCheck",
       "pos": [
         440,
         190
@@ -69,7 +69,7 @@
       "id": "model",
       "type": "backend",
       "label": "Model.js",
-      "sublabel": "normalize, read marks",
+      "sublabel": "normalize, markdown",
       "pos": [
         660,
         190
@@ -225,7 +225,7 @@
     {
       "from": "site",
       "to": "widget",
-      "label": "curl",
+      "label": "curl: list | probe",
       "variant": "emphasis"
     },
     {
@@ -320,6 +320,16 @@
         "Every instance watches both files (FileView)",
         "Only the leader writes the cache",
         "Delete state.json to reset to first run"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "When it asks",
+      "items": [
+        "checkAt (09:30): the full list, ~130 KB",
+        "Edition late: hourly probe /{date}, ~10 KB",
+        "Probe 404 = not out yet; 200 = fetch the list",
+        "429: hold everything until Retry-After"
       ]
     }
   ]
