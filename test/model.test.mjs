@@ -155,6 +155,41 @@ test("richText escapes markup and styles code spans", () => {
   assert.equal(M.plainText("a `b` c"), "a b c");
 });
 
+test("markdown: paragraphs, headings, lists and code blocks", () => {
+  const md = M.markdown("## O problema\nUm insert.\nContinua.\n\n- `morphTo()` rejeita\n- outro\n\n1. um\n2) dois\n\n```bash\ncomposer require x/y\n  **não** é negrito\n```\nDepois.", "#abc");
+  assert.equal(md,
+    "<b>O problema</b><br>Um insert. Continua." +
+    '<br><br>•&nbsp;<font face="monospace" color="#abc">morphTo()</font> rejeita<br>•&nbsp;outro' +
+    "<br><br>1.&nbsp;um<br>2.&nbsp;dois" +
+    '<br><br><font face="monospace" color="#abc">composer require x/y<br>&nbsp;&nbsp;**não** é negrito</font>' +
+    "<br><br>Depois.");
+});
+
+test("markdown: links, bare URLs and emphasis, never unsafe", () => {
+  assert.equal(M.markdown("Veja [#61789](https://github.com/laravel/framework/pull/61789).", "#abc"),
+    'Veja <a href="https://github.com/laravel/framework/pull/61789">#61789</a>.');
+  assert.equal(M.markdown("Documentação: https://spatie.be/docs/x/v7.", "#abc"),
+    'Documentação: <a href="https://spatie.be/docs/x/v7">https://spatie.be/docs/x/v7</a>.');
+  assert.equal(M.markdown("[`Ai::build()`](https://x.dev/a_b_c)", "#abc"),
+    '<a href="https://x.dev/a_b_c"><font face="monospace" color="#abc">Ai::build()</font></a>');
+  assert.equal(M.markdown("[x](javascript:alert(1)) <script>", "#abc"), "[x](javascript:alert(1)) &lt;script&gt;");
+  assert.equal(M.markdown("**forte** e *leve*, mas file_search_call fica", "#abc"),
+    "<b>forte</b> e <i>leve</i>, mas file_search_call fica");
+  assert.equal(M.markdown("", "#abc"), "");
+});
+
+test("markdown: no raw markup survives in any real note", () => {
+  for (const e of editions)
+    for (const s of e.sections)
+      for (const it of s.items) {
+        const html = M.markdown(it.details, "#abc");
+        assert.ok(!html.includes("```"), `fence in ${it.key}`);
+        assert.ok(!/\]\(https?:/.test(html), `raw link in ${it.key}`);
+        assert.ok(!/(^|<br>)#+ /.test(html), `raw heading in ${it.key}`);
+        assert.ok(!/\u0001/.test(html), `placeholder leaked in ${it.key}`);
+      }
+});
+
 test("truncate cuts on a word and says so", () => {
   const s = "Laravel AI 1.2.0 trouxe OpenAI Decisions, correções de structured output e novos defaults";
   const t = M.truncate(s, 40);

@@ -128,6 +128,13 @@ Panel {
     root.close();
   }
 
+  // A link inside an editor's note. openUrl only passes http(s).
+  function openLink(url) {
+    if (!url || !root.hostWidget) return;
+    root.hostWidget.openUrl(url);
+    root.close();
+  }
+
   function openEdition() {
     if (!root.hostWidget) return;
     root.hostWidget.openUrl(root.edition ? root.edition.url : Model.SITE);
@@ -723,6 +730,7 @@ Panel {
                   onCursorRequested: function (key) { root.cursorKey = key; }
                   onToggleRequested: { root.cursorKey = modelData.key; root.toggleExpanded(modelData.key); }
                   onOpenRequested: root.openItem(modelData)
+                  onLinkRequested: function (url) { root.openLink(url); }
                   onRevealRequested: function (target) { root.reveal(target); }
                 }
               }

@@ -370,6 +370,117 @@ function richText(text, codeColor) {
   });
 }
 
+// The editors' full notes are Markdown (the API docs say so, and the notes
+// use it: paragraphs, `##` headings, lists, ``` blocks, [links](…), bare URLs).
+// Qt's StyledText is a small HTML subset that collapses newlines, so without
+// this a note reads as one run-on paragraph with the markup printed in it.
+//
+// Not a general Markdown parser: it covers what the site writes, and anything
+// it does not know falls through as escaped text, which still reads fine.
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function isHref(url) {
+  return /^https?:\/\/[^\s"<>]+$/.test(url);
+}
+
+function codeSpan(code, codeColor) {
+  return "<font face=\"monospace\" color=\"" + codeColor + "\">" + escapeHtml(code) + "</font>";
+}
+
+function emphasis(html) {
+  return html
+    .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+    .replace(/(^|[^\w*])\*([^*\s][^*\n]*?)\*(?![\w*])/g, "$1<i>$2</i>");
+}
+
+// One line of Markdown. Code spans and links are lifted out first, as
+// placeholders, so a `**` inside code or a `_` inside a URL is never styled.
+function inlineMarkdown(raw, codeColor) {
+  var held = [];
+  function hold(html) { held.push(html); return "\u0001" + (held.length - 1) + "\u0001"; }
+  var s = String(raw || "");
+  s = s.replace(/`([^`\n]+)`/g, function (_m, code) { return hold(codeSpan(code, codeColor)); });
+  s = s.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, function (m, label, url) {
+    return isHref(url) ? hold("<a href=\"" + url + "\">" + emphasis(escapeHtml(label)) + "</a>") : m;
+  });
+  s = s.replace(/https?:\/\/[^\s<>"'`\u0001]+/g, function (url) {
+    var trail = /[.,;:!?)\]]+$/.exec(url);
+    var bare = trail ? url.slice(0, -trail[0].length) : url;
+    return isHref(bare) ? hold("<a href=\"" + bare + "\">" + escapeHtml(bare) + "</a>") + (trail ? trail[0] : "") : url;
+  });
+  s = emphasis(escapeHtml(s));
+  // Link labels can hold code spans, so restore until nothing is left.
+  for (var guard = 0; guard < 4 && /\u0001\d+\u0001/.test(s); guard++)
+    s = s.replace(/\u0001(\d+)\u0001/g, function (_m, n) { return held[Number(n)]; });
+  return s;
+}
+
+function codeBlock(lines, codeColor) {
+  var body = lines.map(function (l) {
+    return escapeHtml(l).replace(/^ +/, function (sp) { return sp.replace(/ /g, "&nbsp;"); });
+  }).join("<br>");
+  return "<font face=\"monospace\" color=\"" + codeColor + "\">" + body + "</font>";
+}
+
+function markdown(text, codeColor) {
+  var lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
+  var blocks = [];
+  var para = [];
+  var list = [];
+
+  function push(kind, html) { blocks.push({ kind: kind, html: html }); }
+  function flushPara() {
+    if (para.length) push("p", inlineMarkdown(para.join(" "), codeColor));
+    para = [];
+  }
+  function flushList() {
+    if (list.length)
+      push("list", list.map(function (it) {
+        return it.mark + "&nbsp;" + inlineMarkdown(it.text, codeColor);
+      }).join("<br>"));
+    list = [];
+  }
+
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (/^\s*```/.test(line)) {
+      flushPara(); flushList();
+      var code = [];
+      for (i++; i < lines.length && !/^\s*```/.test(lines[i]); i++) code.push(lines[i]);
+      push("code", codeBlock(code, codeColor));
+      continue;
+    }
+    if (!line.trim()) { flushPara(); flushList(); continue; }
+    var h = /^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$/.exec(line);
+    if (h) { flushPara(); flushList(); push("h", "<b>" + inlineMarkdown(h[1], codeColor) + "</b>"); continue; }
+    var li = /^\s*([-*+]|\d+[.)])\s+(.*)$/.exec(line);
+    if (li) {
+      flushPara();
+      list.push({ mark: /\d/.test(li[1]) ? li[1].replace(")", ".") : "•", text: li[2] });
+      continue;
+    }
+    if (list.length && /^\s+\S/.test(line)) { list[list.length - 1].text += " " + line.trim(); continue; }
+    flushList();
+    para.push(line.trim());
+  }
+  flushPara(); flushList();
+
+  // A heading sits right on top of its text; every other block gets a blank
+  // line before the next one.
+  var out = "";
+  for (var b = 0; b < blocks.length; b++) {
+    if (b > 0) out += blocks[b - 1].kind === "h" ? "<br>" : "<br><br>";
+    out += blocks[b].html;
+  }
+  return out;
+}
+
 // Strip code ticks for places that cannot render them (tooltips, toasts).
 function plainText(text) {
   return String(text || "").replace(/`([^`\n]+)`/g, "$1");

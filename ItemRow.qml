@@ -36,6 +36,7 @@ Item {
   signal cursorRequested(string key)
   signal toggleRequested()
   signal openRequested()
+  signal linkRequested(string url)
   signal revealRequested(var target)
 
   width: parent ? parent.width : implicitWidth
@@ -184,8 +185,12 @@ Item {
         x: Style.space(10)
         y: Style.space(4)
         width: parent.width - Style.space(10)
-        text: root.item ? Model.richText(root.item.details, root.codeColor) : ""
+        text: root.item ? Model.markdown(root.item.details, root.codeColor) : ""
         textFormat: Text.StyledText
+        linkColor: root.codeColor
+        // A link takes its own click, so following one never also folds the
+        // note underneath it.
+        onLinkActivated: function (link) { root.linkRequested(link); }
         wrapMode: Text.Wrap
         color: root.foreground
         opacity: 0.88
