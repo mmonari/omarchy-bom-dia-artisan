@@ -9,6 +9,11 @@
 // paragraph per edition. `/api/reports` carries the same 16 editions with every
 // section, item, status and link — everything the panel is made of — and is
 // only ~130 KB. One request fills the whole history.
+//
+// Two requests, then (see planCheck): the LIST, `/api/reports`, refreshes the
+// whole history and is the only answer ever cached; the PROBE,
+// `/api/reports/{date}` (~10 KB, 404 until that edition exists), is the cheap
+// "is it out yet?" asked on a late day's hourly retries.
 
 var ENDPOINT = "https://bom-dia-artisan.dev/api/reports";
 var USER_AGENT = "omarchy-bom-dia-artisan/0.1 (+https://github.com/mmonari/omarchy-bom-dia-artisan)";
@@ -18,13 +23,25 @@ var USER_AGENT = "omarchy-bom-dia-artisan/0.1 (+https://github.com/mmonari/omarc
 // appends a trailer line with the status and that header.
 var TRAILER = "\n@@bom-dia-artisan ";
 
-function request() {
+// The probe puts a date into a URL, so it takes nothing but YYYY-MM-DD.
+function isEditionDate(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+// kind: "list" (the default) or "probe", which needs `date`. A probe with a
+// malformed date gets [] — nothing to run — rather than a URL built from it.
+function request(kind, date) {
+  var url = ENDPOINT;
+  if (kind === "probe") {
+    if (!isEditionDate(date)) return [];
+    url = ENDPOINT + "/" + date;
+  }
   return [
     "curl", "--silent", "--show-error", "--location", "--compressed",
     "--max-time", "20", "--connect-timeout", "8",
     "--user-agent", USER_AGENT,
     "--write-out", TRAILER + "%{http_code} %header{retry-after}",
-    ENDPOINT
+    url
   ];
 }
 
@@ -60,7 +77,15 @@ function retryAfterMs(value, nowMs) {
 
 // Never throws: a widget that throws inside the shell process takes the bar
 // with it.
-function parse(stdout, exitCode, nowMs) {
+//
+// `plan` is what was asked for (see planCheck); without one, the list. A probe
+// answers in one of three ways that are not failures to fetch:
+//   404                       -> { ok: true, pending: true }  not out yet
+//   200, edition of that date -> { ok: true, arrived: true }  fetch the list now
+// Anything else from a probe (a 200 that is some other edition, or not JSON)
+// is a failure like any other, and so is a 429.
+function parse(stdout, exitCode, nowMs, plan) {
+  var probe = !!plan && plan.kind === "probe";
   if (exitCode !== 0) {
     var msg = CURL_ERRORS[exitCode] || ("Falha ao buscar as edições (curl " + exitCode + ")");
     return { ok: false, error: msg, offline: exitCode === 6 || exitCode === 7 || exitCode === 28 };
@@ -75,17 +100,25 @@ function parse(stdout, exitCode, nowMs) {
     out = out.slice(0, cut);
     if (status === 429)
       return { ok: false, error: "O site pediu uma pausa (limite de requisições)", retryAfterMs: retryAfterMs(meta[2], nowMs) };
+    if (probe && status === 404)
+      return { ok: true, pending: true };
     if (status < 200 || status >= 300)
       return { ok: false, error: "O site respondeu com erro (HTTP " + (status || "?") + ")" };
   }
   var text = out.trim();
   if (!text)
     return { ok: false, error: "O site respondeu vazio" };
+  var doc;
   try {
-    return { ok: true, doc: JSON.parse(text), text: text };
+    doc = JSON.parse(text);
   } catch (e) {
     return { ok: false, error: "O site não respondeu JSON" };
   }
+  if (!probe)
+    return { ok: true, doc: doc, text: text };
+  if (doc && typeof doc === "object" && !Array.isArray(doc) && doc.date === plan.date)
+    return { ok: true, arrived: true };
+  return { ok: false, error: "O site respondeu outra edição" };
 }
 
 // When to ask. ONCE A DAY: this is a morning brief, not a ticker.
@@ -153,4 +186,24 @@ function checkDue(state) {
     return true;                        // the day's check has not run yet
   var wait = state.failures > 0 ? failRetryMs(state.failures) : LATE_RETRY_MS;
   return state.nowMs - last >= wait;    // failed, or the edition was late
+}
+
+// What to ask, once checkDue says to ask. The day's first check is the LIST:
+// it refreshes the history and usually finds the edition. Once a list has come
+// back today and the edition was still missing, the hourly retries only PROBE
+// for it (~10 KB instead of ~130 KB); when the probe finds it, the widget
+// fetches the list straight away, so the cache stays one coherent answer.
+// After a failure we know nothing, so the retry is the list again, and so is
+// a click on refresh.
+//
+// state: { nowMs, checkAt, lastListOkMs, failures, force }
+// lastListOkMs is when a list last came back whole (the cache's fetchedAt).
+function planCheck(state) {
+  var list = { kind: "list" };
+  if (state.force || state.failures > 0)
+    return list;
+  if ((Number(state.lastListOkMs) || 0) < checkTimeMs(state.nowMs, state.checkAt))
+    return list;                        // no list yet today: this is the day's check
+  var date = editionDate(state.nowMs);
+  return isEditionDate(date) ? { kind: "probe", date: date } : list;
 }

@@ -62,10 +62,15 @@ BarWidget {
     property double lastAttemptMs: 0
     // Set by a 429: no request, scheduled or clicked, before this time.
     property double notBeforeMs: 0
+    // When a full list last came back (the cache's fetchedAt). Also what tells
+    // Source.planCheck whether today's list has run, so a late day's retries
+    // can be cheap probes.
     property double lastOkMs: 0
     property string error: ""
     property int failures: 0
     property bool inFlight: false
+    // What the request in flight asked for: { kind: "list" | "probe", date }.
+    property var plan: null
   }
 
   // ------------------------------------------------------------ leadership --
@@ -227,9 +232,20 @@ BarWidget {
     if (internal.inFlight || !internal.dirsReady) return;
     // Rate limited: a click would only earn another 429.
     if (Date.now() < internal.notBeforeMs) return;
+    var now = Date.now();
+    var plan = Source.planCheck({
+      nowMs: now,
+      checkAt: root.checkAt,
+      lastListOkMs: internal.lastOkMs,
+      failures: internal.failures,
+      force: force === true
+    });
+    var argv = Source.request(plan.kind, plan.date);
+    internal.lastAttemptMs = now;
+    if (!argv.length) { root.fail("Pedido inválido"); return; }
+    internal.plan = plan;
     internal.inFlight = true;
-    internal.lastAttemptMs = Date.now();
-    fetchProc.command = Source.request();
+    fetchProc.command = argv;
     guard.interval = Source.timeoutMs();
     guard.restart();
     fetchProc.running = true;
@@ -244,6 +260,16 @@ BarWidget {
     internal.editions = norm.editions;
     cacheFile.setText(JSON.stringify({ fetchedAt: internal.lastOkMs, reports: res.doc }));
     root.afterData();
+  }
+
+  // A probe's answer. Neither one is cached: only a list is.
+  function probed(res) {
+    internal.failures = 0;
+    internal.error = "";
+    // Out at last: fetch the whole list now, one request after the probe. On
+    // the next tick, so fetchProc is not restarted from its own onExited.
+    if (res.arrived) Qt.callLater(function () { root.refresh(true); });
+    // Otherwise not out yet: checkDue asks again in an hour.
   }
 
   function fail(reason, retryAfterMs) {
@@ -286,8 +312,10 @@ BarWidget {
     onExited: function (exitCode) {
       guard.stop();
       internal.inFlight = false;
-      var res = Source.parse(stdout.text, exitCode, Date.now());
-      if (res.ok) root.succeed(res); else root.fail(res.error, res.retryAfterMs || 0);
+      var res = Source.parse(stdout.text, exitCode, Date.now(), internal.plan);
+      if (!res.ok) root.fail(res.error, res.retryAfterMs || 0);
+      else if (res.pending || res.arrived) root.probed(res);
+      else root.succeed(res);
     }
   }
 

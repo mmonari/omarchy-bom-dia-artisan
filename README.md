@@ -26,7 +26,9 @@ readable from the Omarchy bar.
   dated in São Paulo time, so outside Brazil "today's edition" means São Paulo's today, and the
   plugin does not retry all day for one that isn't due yet.
 - **Polite to the API.** It stays far under the 10 requests per minute limit, and if the site
-  ever answers `429` it waits for the `Retry-After` it was given, clicks included.
+  ever answers `429` it waits for the `Retry-After` it was given, clicks included. On a late
+  day, the hourly retries ask only "is today's edition out yet?" (~10 KB), not for the whole
+  history (~130 KB).
 - **Offline-friendly.** The last answer is cached, so the panel opens instantly and still works
   without a network. The footer says when what you see is the saved copy.
 
@@ -71,7 +73,7 @@ Set these on the widget's entry in `~/.config/omarchy/shell.json`, or with
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `checkAt` | `"09:30"` | Local time of the one daily check (your clock; the *edition* date follows São Paulo). The edition is usually out by then. If it isn't, the plugin checks again hourly until it is, then stays quiet until the next morning. If the machine was off or asleep at that time, the check runs as soon as it's back. Opening the panel never fetches; the ↻ button does. |
+| `checkAt` | `"09:30"` | Local time of the one daily check (your clock; the *edition* date follows São Paulo). The edition is usually out by then. If it isn't, the plugin asks for just that edition hourly until it is out, then fetches the full list once and stays quiet until the next morning. If the machine was off or asleep at that time, the check runs as soon as it's back. Opening the panel never fetches; the ↻ button does. |
 | `notify` | `"on"` | `"off"` disables the toast. The bar dot still shows unread editions. |
 
 ## IPC
@@ -89,6 +91,7 @@ qs -p /usr/share/omarchy/shell ipc call m0u.artisan open|close|toggle|refresh|ma
 | Read marks + last announced edition | `~/.local/state/m0u-artisan/state.json` |
 | Cached API response | `~/.cache/m0u-artisan/reports.json` |
 | Data source | `https://bom-dia-artisan.dev/api/reports`, the same 16 editions as `/feed.xml` with every section and item |
+| Late-day probe | `https://bom-dia-artisan.dev/api/reports/<YYYY-MM-DD>`, one edition, `404` until it is out. Never cached |
 
 Deleting `state.json` resets the plugin to a first run, where only the newest edition is unread.
 
@@ -138,14 +141,18 @@ One fetch, start to finish:
 
 1. A 60-second timer in `BarWidget.qml` asks `Source.checkDue()` whether the day's check is
    due. A wall-clock check survives suspend, unlike a long QML `Timer`.
-2. If it is due, `BarWidget.qml` runs the argv from `Source.request()` (a `curl` command) and
+2. If it is due, `Source.planCheck()` says what to ask for. The day's first check, a retry after
+   a failure and ↻ fetch the full list, `/api/reports`. A late day's hourly retries only *probe*
+   `/api/reports/<today>`: a `404` means "not out yet" and is not an error, and a `200` makes
+   the widget fetch the list right away. Only a list is ever cached.
+3. `BarWidget.qml` runs the argv from `Source.request()` (a `curl` command) and
    hands the output to `Source.parse()`. curl runs without `--fail` and appends the HTTP status
    and `Retry-After` as a trailer line, so a `429` can be told apart from other errors.
-3. `Model.normalize()` turns the API response into editions. The widget writes the raw response
+4. `Model.normalize()` turns the API response into editions. The widget writes the raw response
    to `reports.json`.
-4. `Model.notifyCandidate()` decides whether to toast. If yes, the widget saves `state.json`
+5. `Model.notifyCandidate()` decides whether to toast. If yes, the widget saves `state.json`
    *first*, then runs `Actions.notifyArgv()`.
-5. `Model.summarize()` produces the `summary` object. `Mark.qml` draws the mug from it, and
+6. `Model.summarize()` produces the `summary` object. `Mark.qml` draws the mug from it, and
    `Panel.qml` / `ItemRow.qml` draw the edition.
 
 **One widget per monitor.** The shell builds one instance per output. Only the *leader*, the
@@ -176,8 +183,8 @@ Mark.qml               The mug in the bar: steam + dot when unread
 
 Model.js               Every rule: normalizing, filters, cursor moves, read marks, notify, wording,
                        and the Markdown-to-StyledText converter for the editors' notes
-Source.js              Transport: the curl argv, response parsing (HTTP status, 429), checkDue,
-                       and the São Paulo edition date
+Source.js              Transport: the curl argv (list or probe), response parsing (HTTP status,
+                       429, probe 404), checkDue, planCheck, and the São Paulo edition date
 Actions.js             Fixed argv for xdg-open and the toast. Feed text never reaches a shell
 Theme.js               Status colours, glyphs and labels, written as \u escapes
 

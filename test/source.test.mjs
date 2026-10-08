@@ -98,6 +98,70 @@ test("editions are dated in São Paulo, wherever the reader is", () => {
   assert.equal(S.checkDue({ nowMs: tokyoMorning, checkAt: "00:00", newestDate: "2026-10-07", lastAttemptMs: 0, failures: 0 }), false);
 });
 
+// --- the late-day probe ---
+
+const plan = (o) => S.planCheck(Object.assign({ checkAt: "09:30", lastListOkMs: 0, failures: 0, force: false }, o));
+
+test("the day's first check is the list; a late day's retries only probe", () => {
+  assert.deepEqual(plan({ nowMs: at(9, 30) }), { kind: "list" }, "nothing fetched yet");
+  const yesterday = new Date(2026, 9, 7, 9, 31).getTime();
+  assert.deepEqual(plan({ nowMs: at(9, 30), lastListOkMs: yesterday }), { kind: "list" }, "yesterday's list is not today's");
+  assert.deepEqual(plan({ nowMs: at(15, 0), lastListOkMs: at(8, 0) }), { kind: "list" }, "a list before checkAt is not the day's check");
+  assert.deepEqual(plan({ nowMs: at(10, 30), lastListOkMs: at(9, 30) }), { kind: "probe", date: "2026-10-08" });
+});
+
+test("after a failure, or on a click, it is the list again", () => {
+  assert.deepEqual(plan({ nowMs: at(10, 30), lastListOkMs: at(9, 30), failures: 1 }), { kind: "list" });
+  assert.deepEqual(plan({ nowMs: at(10, 30), lastListOkMs: at(9, 30), force: true }), { kind: "list" });
+});
+
+test("the probe asks for São Paulo's date, not the local one", () => {
+  // 23:30 in Lisbon (UTC+1) is 19:30 the same day in São Paulo...
+  const lisbonEvening = Date.UTC(2026, 9, 8, 22, 30);
+  const p = S.planCheck({ nowMs: lisbonEvening, checkAt: "00:00", lastListOkMs: lisbonEvening - 60000, failures: 0 });
+  assert.equal(p.date, "2026-10-08");
+});
+
+test("request builds the probe URL for a date, and refuses anything else", () => {
+  const argv = S.request("probe", "2026-10-08");
+  assert.equal(argv[0], "curl");
+  assert.equal(argv[argv.length - 1], "https://bom-dia-artisan.dev/api/reports/2026-10-08");
+  assert.deepEqual(argv.slice(0, -1), S.request("list").slice(0, -1), "same flags as the list");
+  for (const bad of ["2026-10-8", "../../etc", "2026-10-08/../x", "2026-10-08\n", "", undefined, 20261008])
+    assert.deepEqual(S.request("probe", bad), [], String(bad));
+  assert.equal(S.request("list", "../x").at(-1), "https://bom-dia-artisan.dev/api/reports", "a list ignores the date");
+});
+
+const probe = { kind: "probe", date: "2026-10-08" };
+const edition = JSON.stringify({ date: "2026-10-08", title: "Edição de 8 de outubro de 2026", sections: [] });
+
+test("a probe's 404 means not out yet, which is not a failure", () => {
+  const res = S.parse(reply('{"statusCode":404,"statusMessage":"Relatório não encontrado"}', 404), 0, 0, probe);
+  assert.deepEqual(res, { ok: true, pending: true });
+});
+
+test("a probe's 200 for that date means it arrived", () => {
+  assert.deepEqual(S.parse(reply(edition, 200), 0, 0, probe), { ok: true, arrived: true });
+});
+
+test("a probe's 200 that is not that edition is a failure", () => {
+  const other = S.parse(reply(edition, 200), 0, 0, { kind: "probe", date: "2026-10-09" });
+  assert.equal(other.ok, false);
+  assert.equal(other.error, "O site respondeu outra edição");
+  assert.equal(S.parse(reply("[" + edition + "]", 200), 0, 0, probe).ok, false, "a list is not an edition");
+  assert.equal(S.parse(reply("null", 200), 0, 0, probe).ok, false);
+  assert.equal(S.parse(reply("<html>", 200), 0, 0, probe).error, "O site não respondeu JSON");
+});
+
+test("a probe's 429 and network errors are failures, as for the list", () => {
+  const now = Date.UTC(2026, 9, 8, 12, 0, 0);
+  const limited = S.parse(reply('{"statusCode":429}', 429, "42"), 0, now, probe);
+  assert.equal(limited.ok, false);
+  assert.equal(limited.retryAfterMs, 42000);
+  assert.equal(S.parse("", 6, now, probe).offline, true);
+  assert.equal(S.parse(reply("", 500), 0, now, probe).ok, false);
+});
+
 test("checkAt is parsed leniently and falls back to 09:30", () => {
   assert.equal(S.checkMinutes("7:45"), 7 * 60 + 45);
   assert.equal(S.checkMinutes("09:30"), 570);
@@ -138,6 +202,6 @@ test("no literal Nerd Font glyphs in any source file", () => {
   const files = readdirSync(ROOT).filter((f) => /\.(js|qml)$/.test(f));
   for (const f of files) {
     const s = readFileSync(join(ROOT, f), "utf8");
-    assert.ok(!/[-]|[\u{F0000}-\u{10FFFF}]/u.test(s), `literal glyph in ${f}`);
+    assert.ok(!/[\uE000-\uF8FF]|[\u{F0000}-\u{10FFFF}]/u.test(s), `literal glyph in ${f}`);
   }
 });
