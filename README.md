@@ -3,6 +3,9 @@
 The daily Laravel ecosystem digest from [bom-dia-artisan.dev](https://bom-dia-artisan.dev/),
 readable from the Omarchy bar.
 
+> Unofficial. Not affiliated with bom-dia-artisan.dev; it reads the site's public
+> `/api/reports` once a day.
+
 ![The bar mark](docs/preview-bar.png)
 
 ![The panel](docs/preview-panel.png)
@@ -28,9 +31,9 @@ readable from the Omarchy bar.
 ## Install
 
 ```bash
-git clone <this repo> ~/Projects/Omarchy/Plugins/omarchy-bom-dia-artisan
+git clone https://github.com/mmonari/omarchy-bom-dia-artisan.git ~/Projects/Omarchy/Plugins/omarchy-bom-dia-artisan
 ln -s ~/Projects/Omarchy/Plugins/omarchy-bom-dia-artisan ~/.config/omarchy/plugins/m0u.artisan
-omarchy bar put m0u.artisan --before m0u.backups
+omarchy bar put m0u.artisan              # right section; add --after <id> to place it
 omarchy restart shell
 ```
 

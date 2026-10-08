@@ -11,7 +11,7 @@
 // only ~130 KB. One request fills the whole history.
 
 var ENDPOINT = "https://bom-dia-artisan.dev/api/reports";
-var USER_AGENT = "omarchy-bom-dia-artisan/0.1 (+https://github.com/mmonari)";
+var USER_AGENT = "omarchy-bom-dia-artisan/0.1 (+https://github.com/mmonari/omarchy-bom-dia-artisan)";
 
 function request() {
   return [
