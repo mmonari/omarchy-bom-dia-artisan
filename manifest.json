@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "id": "m0u.artisan",
+  "name": "Bom Dia, Artisan",
+  "version": "0.1.0",
+  "author": "m0u",
+  "license": "MIT",
+  "description": "The daily Laravel ecosystem digest from bom-dia-artisan.dev, in the bar. A coffee mug that steams when a new edition lands; click to read every release, merge and the recommendation of the day without leaving the desktop.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Bom Dia, Artisan",
+    "description": "A mug in the bar that steams when today's Laravel digest is out and unread.",
+    "category": "Development",
+    "defaultSection": "right",
+    "aliases": [
+      "artisan",
+      "laravel",
+      "bom-dia",
+      "news",
+      "feed"
+    ],
+    "allowMultiple": false,
+    "defaults": {
+      "checkAt": "09:30",
+      "notify": "on"
+    },
+    "schema": [
+      {
+        "key": "checkAt",
+        "type": "string",
+        "label": "Daily check at",
+        "defaultValue": "09:30",
+        "description": "Local time (HH:MM) of the one daily check. The edition is usually out by 09:30; if not, it retries hourly until it is."
+      },
+      {
+        "key": "notify",
+        "type": "enum",
+        "label": "Desktop notification",
+        "options": [
+          "on",
+          "off"
+        ],
+        "defaultValue": "on",
+        "description": "Announce each new edition once with a toast; clicking it opens the panel."
+      }
+    ]
+  }
+}

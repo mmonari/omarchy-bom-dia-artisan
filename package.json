@@ -1,0 +1,12 @@
+{
+  "name": "omarchy-bom-dia-artisan",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tests for the QML-free logic of the Bom Dia, Artisan Omarchy plugin.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "test": "node --test 'test/*.test.mjs' && ./tools/escape-glyphs.py --check",
+    "validate": "omarchy plugin validate ."
+  }
+}

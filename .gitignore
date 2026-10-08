@@ -1,0 +1,12 @@
+# NOTE: docs/lessons-learned/ IS committed here — this is a personal repo,
+# not a client one. See the "Lessons-learned scope" convention.
+
+# OS / editor noise
+.DS_Store
+._*
+*.swp
+.idea/
+.vscode/
+
+# Node (tests only; there are no runtime dependencies)
+node_modules/
