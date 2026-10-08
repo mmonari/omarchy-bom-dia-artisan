@@ -175,7 +175,7 @@ Theme.js               Status colours, glyphs and labels, written as \u escapes
 
 test/harness.mjs       Loads the .js files above into node, stripping only .pragma/.import
 test/*.test.mjs        The tests (model, source; actions and theme live in source.test.mjs)
-test/fixtures/         reports.json: a real /api/reports response captured on 2026-10-08
+test/fixtures/         reports.json: 4 editions from a real /api/reports response (2026-10-08)
 tools/escape-glyphs.py Rewrites literal Nerd Font glyphs as escapes. --check fails on any
 assets/                logo.png, the toast icon
 docs/architecture/     The diagram: JSON source, interactive HTML, SVG for this README
@@ -236,9 +236,10 @@ The full list, with the reasons, is in [`CLAUDE.md`](CLAUDE.md). The short versi
 `test/harness.mjs` reads each `.js` file, blanks its `.pragma` / `.import` lines (keeping line
 numbers intact), and evaluates it in node's own realm. That realm choice matters:
 `assert.deepEqual` would otherwise fail on cross-realm arrays. Tests run against
-`test/fixtures/reports.json`, a real API response with 16 editions and 145 items. That fixture
-includes older editions with no `status` field, which `Model.inferStatus` handles. If you
-replace the fixture, update the tests that pin those counts in the same commit.
+`test/fixtures/reports.json`, four editions (31 items) from a real API response, trimmed so the
+repo does not republish the site's archive. It includes an older edition with no `status`
+field, which `Model.inferStatus` handles. If you replace the fixture, update the tests that pin
+those counts in the same commit.
 
 ### Verifying UI changes
 

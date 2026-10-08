@@ -9,10 +9,10 @@ const NOW = new Date(2026, 9, 8, 12, 0, 0).getTime();
 
 const { editions } = M.normalize(real);
 
-test("normalize reads the real API: 16 editions, newest first", () => {
-  assert.equal(editions.length, 16);
+test("normalize reads the real API: 4 editions, newest first", () => {
+  assert.equal(editions.length, 4);
   assert.equal(editions[0].date, "2026-10-08");
-  assert.equal(editions[15].date, "2026-09-23");
+  assert.equal(editions[3].date, "2026-09-23");
   assert.equal(editions[0].url, "https://bom-dia-artisan.dev/reports/2026-10-08");
 });
 
@@ -22,7 +22,7 @@ test("counts match the items, and every item gets a status", () => {
   const sum = e.counts.released + e.counts.merged + e.counts.recommended + e.counts.note;
   assert.equal(sum, e.counts.total);
   const total = editions.reduce((n, ed) => n + ed.counts.total, 0);
-  assert.equal(total, 145);
+  assert.equal(total, 31);
 });
 
 test("older editions without a status field get it from the description", () => {
@@ -99,7 +99,7 @@ test("cursor walks the flattened rows and stops at the ends", () => {
   assert.equal(M.moveCursor([], "x", 1), "");
 });
 
-test("first run greets with one unread edition, not sixteen", () => {
+test("first run greets with one unread edition, not all of them", () => {
   const read = M.seedRead(editions);
   assert.deepEqual(M.unreadDates(editions, read), ["2026-10-08"]);
 });
