@@ -3,6 +3,35 @@
 > Accumulated, dated lessons on writing third-party bar widgets. Newest first.
 > See also `omarchy-backup-status/docs/lessons-learned/omarchy-plugins.md`.
 
+## 2026-10-08 — Chaining a second request from a Process's own `onExited`
+- **Context:** A probe that finds the edition must start the full list fetch on the same
+  `Process`, from the handler of the request that just ended.
+- **Lesson:** Don't restart a `Process` from inside its own `onExited`. Defer it with
+  `Qt.callLater(function () { root.refresh(true); })`, so the next request starts on a clean
+  tick, after `inFlight` has been reset.
+- **Why it matters:** Re-arming `command`/`running` while the exit signal is still being
+  delivered is fragile, and the in-flight guard may not have cleared yet.
+- **How to apply:** `BarWidget.probed()`. Keep the decision (list vs probe) pure in
+  `Source.planCheck` so the chain is unit-tested, even though it only runs live on a late day.
+- **Refs:** `BarWidget.qml`, `Source.js`, changelog 2026-10-08 (late-day probe)
+- **Scope:** stack
+- **Versions:** none
+
+## 2026-10-08 — A glyph check that scans only top-level files misses the tests
+- **Context:** `tools/escape-glyphs.py --check` (part of `npm test`) scans top-level `.js`/`.qml`
+  only. The "no literal glyphs" test in `test/source.test.mjs` had literal private-use
+  characters in its own regex for a whole day, and a parallel agent found them by running the
+  tool on that file directly.
+- **Lesson:** A guard's scope should match the files the dangerous tools write. Here that
+  means every `.js`/`.mjs`/`.qml` in the repo, tests included.
+- **Why it matters:** Literal PUA characters are invisible in diffs and terminals. A regex that
+  silently changes meaning would pass review.
+- **How to apply:** Run `tools/escape-glyphs.py` on every file a session writes, not only the
+  top-level ones. Widening `--check` to recurse is an open improvement.
+- **Refs:** `tools/escape-glyphs.py`, `test/source.test.mjs`
+- **Scope:** generic
+- **Versions:** none
+
 ## 2026-10-08 — Qt StyledText collapses newlines: convert Markdown, and check it offscreen
 - **Context:** The API's `details` field is Markdown. Run through an inline-code-only
   formatter into `Text.StyledText`, every note became one paragraph with `## O problema` and
