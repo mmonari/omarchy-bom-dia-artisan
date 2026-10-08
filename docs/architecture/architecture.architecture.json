@@ -1,0 +1,326 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Bom Dia, Artisan",
+    "subtitle": "Omarchy bar widget: one file does I/O, pure JS decides, node --test runs the same JS",
+    "output": "architecture.html"
+  },
+  "components": [
+    {
+      "id": "site",
+      "type": "external",
+      "label": "bom-dia-artisan.dev",
+      "sublabel": "GET /api/reports",
+      "pos": [
+        30,
+        390
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "16 editions, JSON"
+    },
+    {
+      "id": "tests",
+      "type": "cloud",
+      "label": "node --test",
+      "sublabel": "test/*.test.mjs",
+      "pos": [
+        665,
+        10
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "tag": "real API fixture"
+    },
+    {
+      "id": "actions",
+      "type": "security",
+      "label": "Actions.js",
+      "sublabel": "argv for xdg-open / toast",
+      "pos": [
+        290,
+        190
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "source",
+      "type": "backend",
+      "label": "Source.js",
+      "sublabel": "curl argv, parse, checkDue",
+      "pos": [
+        440,
+        190
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "model",
+      "type": "backend",
+      "label": "Model.js",
+      "sublabel": "normalize, read marks",
+      "pos": [
+        660,
+        190
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "theme",
+      "type": "backend",
+      "label": "Theme.js",
+      "sublabel": "status colours, glyphs",
+      "pos": [
+        850,
+        190
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "widget",
+      "type": "messagebus",
+      "label": "BarWidget.qml",
+      "sublabel": "the only file with I/O",
+      "pos": [
+        440,
+        390
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "leader fetches + notifies"
+    },
+    {
+      "id": "panel",
+      "type": "frontend",
+      "label": "Panel.qml",
+      "sublabel": "popout, keys, view state",
+      "pos": [
+        660,
+        390
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "rows",
+      "type": "frontend",
+      "label": "ItemRow.qml",
+      "sublabel": "+ StatusChip.qml",
+      "pos": [
+        850,
+        390
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "mark",
+      "type": "frontend",
+      "label": "Mark.qml",
+      "sublabel": "the mug in the bar",
+      "pos": [
+        660,
+        570
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "tag": "steam = unread"
+    },
+    {
+      "id": "desktop",
+      "type": "external",
+      "label": "notify-send",
+      "sublabel": "+ xdg-open",
+      "pos": [
+        30,
+        570
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "cache",
+      "type": "database",
+      "label": "reports.json",
+      "sublabel": "~/.cache/m0u-artisan",
+      "pos": [
+        340,
+        740
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "state",
+      "type": "database",
+      "label": "state.json",
+      "sublabel": "~/.local/state/m0u-artisan",
+      "pos": [
+        540,
+        740
+      ],
+      "size": [
+        170,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "omarchy-shell (Quickshell process), one widget per monitor",
+      "wraps": [
+        "actions",
+        "source",
+        "model",
+        "theme",
+        "widget",
+        "panel",
+        "rows",
+        "mark"
+      ],
+      "pad": 60
+    },
+    {
+      "kind": "security-group",
+      "label": "pure JS, no QML imports, no I/O",
+      "wraps": [
+        "actions",
+        "source",
+        "model",
+        "theme"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "site",
+      "to": "widget",
+      "label": "curl",
+      "variant": "emphasis"
+    },
+    {
+      "from": "widget",
+      "to": "panel",
+      "label": "summary",
+      "variant": "emphasis"
+    },
+    {
+      "from": "panel",
+      "to": "rows"
+    },
+    {
+      "from": "widget",
+      "to": "source",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelDy": -6
+    },
+    {
+      "from": "panel",
+      "to": "model",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "from": "tests",
+      "to": "model",
+      "label": "loads the same files",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDx": 70,
+      "labelDy": 24
+    },
+    {
+      "from": "widget",
+      "to": "mark",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v"
+    },
+    {
+      "from": "widget",
+      "to": "desktop",
+      "label": "toast, open URL",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v"
+    },
+    {
+      "from": "widget",
+      "to": "cache",
+      "label": "write (leader)",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v"
+    },
+    {
+      "from": "widget",
+      "to": "state",
+      "label": "read marks",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "Shell process",
+      "items": [
+        "BarWidget.qml: curl, two files, notify-send",
+        "Panel / ItemRow / Mark only draw",
+        "Leader = first instance in bar.moduleWidgets()"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Pure JS",
+      "items": [
+        "Every rule lives in Model / Source / Actions / Theme",
+        "No QML imports, so node can load them",
+        "QML Array.sort is unstable: partition instead"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Files on disk",
+      "items": [
+        "Every instance watches both files (FileView)",
+        "Only the leader writes the cache",
+        "Delete state.json to reset to first run"
+      ]
+    }
+  ]
+}
