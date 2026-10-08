@@ -3,6 +3,55 @@
 > Accumulated, dated lessons on writing third-party bar widgets. Newest first.
 > See also `omarchy-backup-status/docs/lessons-learned/omarchy-plugins.md`.
 
+## 2026-10-08 — Qt StyledText collapses newlines: convert Markdown, and check it offscreen
+- **Context:** The API's `details` field is Markdown. Run through an inline-code-only
+  formatter into `Text.StyledText`, every note became one paragraph with `## O problema` and
+  ```` ```bash ```` printed mid-sentence.
+- **Lesson:** StyledText is a small HTML subset. `\n` is whitespace, so paragraphs need
+  `<br><br>`. It does support `<b>`, `<i>`, `<font>`, `<a href>` (+ `linkColor`,
+  `onLinkActivated`). Convert the Markdown the source actually writes, lifting code spans and
+  links out as placeholders before escaping and emphasis.
+- **Why it matters:** Unit tests on the strings pass while the screen is unreadable, because
+  only the renderer collapses newlines.
+- **How to apply:** Render without touching the live shell: a throwaway `.qml` that imports a
+  copy of the `.js`, sets `textFormat: Text.StyledText`, and calls
+  `grabToImage(r => { r.saveToFile("x.png"); Qt.quit() })`. Run it with
+  `QML_XHR_ALLOW_FILE_READ=1 QT_QPA_PLATFORM=offscreen qml6 render.qml`. It's the same Qt text
+  engine, with no restart and no risk of screenshotting the user's other windows.
+- **Refs:** `Model.markdown`, `ItemRow.qml`, changelog 2026-10-08 (review section)
+- **Scope:** stack
+- **Versions:** none
+
+## 2026-10-08 — `curl --fail` hides the status you need; read it from a `--write-out` trailer
+- **Context:** The API answers `429` with `Retry-After`. With `--fail`, every HTTP error is
+  just exit 22.
+- **Lesson:** Drop `--fail` and append `--write-out "\n@@marker %{http_code} %header{retry-after}"`
+  (`%header{}` needs curl ≥ 7.84). Split on the *last* marker. Retry-After may be an HTTP date
+  with spaces, so take "everything after the status", not the second whitespace token.
+- **Why it matters:** A rate limit looks like a generic error, and the retry backoff ignores
+  what the server asked for.
+- **How to apply:** `Source.request()` / `Source.parse()`. Hold *both* the scheduler and manual
+  clicks until `notBeforeMs`. In this environment the rtk hook rewrites curl's error output
+  (`FAILED: curl …`), so use `rtk proxy curl …` to see what curl actually printed.
+- **Refs:** `Source.js`, `test/source.test.mjs`
+- **Scope:** generic
+- **Versions:** none
+
+## 2026-10-08 — Date logic in a public plugin needs the source's zone and a pinned test zone
+- **Context:** Editions are dated in `America/Sao_Paulo`. "Is today's edition in?" compared
+  against the reader's local date, which would make a Tokyo reader retry hourly all day.
+- **Lesson:** Compare against the *publisher's* date. QML's JS has no tz database, so use a
+  fixed offset when the zone allows it (Brazil: UTC-3, no DST since 2019). Tests built from
+  local `new Date(y, m, d, h)` pass only in the author's zone, so set `process.env.TZ` at the
+  top of the test file (Node honours it at runtime), and add UTC-instant tests for the
+  other-zone cases.
+- **Why it matters:** It works on the author's machine and misbehaves for everyone else.
+- **How to apply:** `Source.editionDate()`. Run `TZ=Asia/Tokyo npm test` and `TZ=UTC npm test`
+  before publishing.
+- **Refs:** `Source.js`, `test/source.test.mjs`
+- **Scope:** generic
+- **Versions:** none
+
 ## 2026-10-08 — A daily schedule is a wall-clock check, never a long QML Timer
 - **Context:** The "once a day at 09:30" check had to work on a desktop that suspends overnight.
 - **Lesson:** QML `Timer` runs on a monotonic clock that stops during suspend. A timer armed in
