@@ -191,7 +191,8 @@ Theme.js               Status colours, glyphs and labels, written as \u escapes
 test/harness.mjs       Loads the .js files above into node, stripping only .pragma/.import
 test/*.test.mjs        The tests (model, source; actions and theme live in source.test.mjs)
 test/fixtures/         reports.json: 4 editions from a real /api/reports response (2026-10-08)
-tools/escape-glyphs.py Rewrites literal Nerd Font glyphs as escapes. --check fails on any
+tools/escape-glyphs.py Rewrites literal Nerd Font glyphs as escapes in every .js/.mjs/.qml
+                       (test/fixtures/ excepted). --check fails on any
 assets/                logo.png, the toast icon
 docs/architecture/     The diagram: JSON source, interactive HTML, SVG for this README
 docs/preview-*.png     The screenshots at the top of this README
@@ -234,7 +235,8 @@ The full list, with the reasons, is in [`CLAUDE.md`](CLAUDE.md). The short versi
   load them.
 - **Write Nerd Font glyphs as `\uXXXX` escapes**, with surrogate pairs above U+FFFF. A literal
   private-use character renders as nothing. Editors and heredocs often turn escapes back into
-  literals, so run `tools/escape-glyphs.py` after editing. `npm test` fails on a literal glyph.
+  literals, so run `tools/escape-glyphs.py` after editing. `npm test` fails on a literal glyph
+  in any `.js`, `.mjs` or `.qml` file, tests included (only `test/fixtures/` is skipped).
 - **Only the leader fetches, writes the cache and notifies.** Never add a second writer.
 - **IPC lands on whichever instance registered first.** An IPC method that touches a panel
   must go through `runOnFocused`.

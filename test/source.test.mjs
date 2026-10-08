@@ -198,8 +198,20 @@ test("every status has a colour, glyph and label", () => {
 
 // The Write tool and heredocs both unescape \uXXXX into literal private-use
 // characters, which render as nothing at all. Source must carry the escape.
+// Same scope as tools/escape-glyphs.py's no-argument mode (SUFFIXES, SKIP).
+// Change both together.
+const GLYPH_SKIP = new Set(["node_modules", ".git", "test/fixtures"]); // dirs, relative to ROOT
+function sources(dir = "") {
+  return readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((e) => {
+    const rel = dir ? `${dir}/${e.name}` : e.name;
+    if (e.isDirectory()) return GLYPH_SKIP.has(rel) ? [] : sources(rel);
+    return /\.(js|mjs|qml)$/.test(e.name) ? [rel] : [];
+  });
+}
+
 test("no literal Nerd Font glyphs in any source file", () => {
-  const files = readdirSync(ROOT).filter((f) => /\.(js|qml)$/.test(f));
+  const files = sources();
+  assert.ok(files.includes("test/source.test.mjs"), "the scan must reach subfolders");
   for (const f of files) {
     const s = readFileSync(join(ROOT, f), "utf8");
     assert.ok(!/[\uE000-\uF8FF]|[\u{F0000}-\u{10FFFF}]/u.test(s), `literal glyph in ${f}`);
